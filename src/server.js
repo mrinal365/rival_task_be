@@ -1,10 +1,16 @@
+// import packages
 import express from 'express';
 import dotenv from 'dotenv';
 import cors from "cors"
 
+// import modules
 import errorHandling from './middlewares/error.middleware.js';
 import pool from './config/db.js';
 
+// import routes
+import taskRoutes from '../src/modules/tasks/task.routes.js'
+
+// env variables setup
 dotenv.config();
 
 // setting up server
@@ -15,6 +21,8 @@ const port = process.env.PORT || 5001
 app.use(express.json())
 app.use(cors())
 
+// routes
+app.use("/api/tasks", taskRoutes);
 
 // error handling middlewares
 app.use(errorHandling)
