@@ -1,6 +1,8 @@
 import pool from '../../config/db.js';
 import { ROLES } from '../../config/roles.js';
 import { createHistoryLog } from './task.history.service.js';
+import { emitToAdmins } from '../../socket/socket.manager.js';
+import { SOCKET_EVENTS } from '../../socket/socket.events.js';
 
 // Create a new task for a user
 export const createTaskService = async (userId, taskData) => {
@@ -27,6 +29,12 @@ export const createTaskService = async (userId, taskData) => {
         title: task.title,
         status: task.status,
         priority: task.priority
+    });
+
+    // Notify all connected admins in real-time
+    emitToAdmins(SOCKET_EVENTS.TASK_CREATED, {
+        task,
+        performedByUserId: userId,
     });
 
     return task;
@@ -113,12 +121,17 @@ export const getAllTasksService = async (userId, queryParams, role) => {
     };
 };
 
-// Get a single task by ID (scoped to user)
-export const getTaskByIdService = async (userId, taskId) => {
-    const result = await pool.query(
-        'SELECT * FROM tasks WHERE id = $1 AND user_id = $2',
-        [taskId, userId]
-    );
+// Get a single task by ID
+// Admin can view any task; regular user can only view their own
+export const getTaskByIdService = async (userId, taskId, role) => {
+    const isAdmin = role === ROLES.ADMIN;
+    
+    const query = isAdmin 
+        ? 'SELECT * FROM tasks WHERE id = $1' 
+        : 'SELECT * FROM tasks WHERE id = $1 AND user_id = $2';
+    const params = isAdmin ? [taskId] : [taskId, userId];
+
+    const result = await pool.query(query, params);
 
     if (result.rows.length === 0) {
         const error = new Error('Task not found');
@@ -129,13 +142,17 @@ export const getTaskByIdService = async (userId, taskId) => {
     return result.rows[0];
 };
 
-// Update a task (scoped to user) — partial update
-export const updateTaskByIdService = async (userId, taskId, updateData) => {
-    // First check if task exists and belongs to user
-    const existing = await pool.query(
-        'SELECT * FROM tasks WHERE id = $1 AND user_id = $2',
-        [taskId, userId]
-    );
+// Update a task (scoped by role) — partial update
+export const updateTaskByIdService = async (userId, taskId, updateData, role) => {
+    const isAdmin = role === ROLES.ADMIN;
+
+    // First check if task exists and user has access to it
+    const checkQuery = isAdmin
+        ? 'SELECT * FROM tasks WHERE id = $1'
+        : 'SELECT * FROM tasks WHERE id = $1 AND user_id = $2';
+    const checkParams = isAdmin ? [taskId] : [taskId, userId];
+
+    const existing = await pool.query(checkQuery, checkParams);
 
     if (existing.rows.length === 0) {
         const error = new Error('Task not found');
@@ -182,27 +199,39 @@ export const updateTaskByIdService = async (userId, taskId, updateData) => {
     // Always update updated_at
     setClauses.push(`updated_at = NOW()`);
 
-    const result = await pool.query(
-        `UPDATE tasks SET ${setClauses.join(', ')} 
-         WHERE id = $${paramIndex} AND user_id = $${paramIndex + 1} 
-         RETURNING *`,
-        [...values, taskId, userId]
-    );
+    const updateQuery = isAdmin
+        ? `UPDATE tasks SET ${setClauses.join(', ')} WHERE id = $${paramIndex} RETURNING *`
+        : `UPDATE tasks SET ${setClauses.join(', ')} WHERE id = $${paramIndex} AND user_id = $${paramIndex + 1} RETURNING *`;
+    const updateParams = isAdmin
+        ? [...values, taskId]
+        : [...values, taskId, userId];
 
+    const result = await pool.query(updateQuery, updateParams);
     const updatedTask = result.rows[0];
 
     // Log activity history
     await createHistoryLog(taskId, userId, 'updated', changes);
 
+    // Notify all connected admins in real-time
+    emitToAdmins(SOCKET_EVENTS.TASK_UPDATED, {
+        task: updatedTask,
+        changes,
+        performedByUserId: userId,
+    });
+
     return updatedTask;
 };
 
-// Delete a task (scoped to user)
-export const deleteTaskByIdService = async (userId, taskId) => {
-    const result = await pool.query(
-        'DELETE FROM tasks WHERE id = $1 AND user_id = $2 RETURNING *',
-        [taskId, userId]
-    );
+// Delete a task (scoped by role)
+export const deleteTaskByIdService = async (userId, taskId, role) => {
+    const isAdmin = role === ROLES.ADMIN;
+
+    const query = isAdmin
+        ? 'DELETE FROM tasks WHERE id = $1 RETURNING *'
+        : 'DELETE FROM tasks WHERE id = $1 AND user_id = $2 RETURNING *';
+    const params = isAdmin ? [taskId] : [taskId, userId];
+
+    const result = await pool.query(query, params);
 
     if (result.rows.length === 0) {
         const error = new Error('Task not found');
