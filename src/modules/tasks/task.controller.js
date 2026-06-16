@@ -38,7 +38,7 @@ export const getAllTasks = async (req, res, next) => {
 // GET /api/tasks/:id
 export const getTaskById = async (req, res, next) => {
     try {
-        const task = await getTaskByIdService(req.user.id, req.params.id);
+        const task = await getTaskByIdService(req.user.id, req.params.id, req.user.role);
         handleResponse(res, 200, "Task fetched successfully", task);
     } catch (err) {
         if (err.statusCode) {
@@ -51,7 +51,7 @@ export const getTaskById = async (req, res, next) => {
 // PATCH /api/tasks/:id
 export const updateTaskById = async (req, res, next) => {
     try {
-        const updatedTask = await updateTaskByIdService(req.user.id, req.params.id, req.body);
+        const updatedTask = await updateTaskByIdService(req.user.id, req.params.id, req.body, req.user.role);
         handleResponse(res, 200, "Task updated successfully", updatedTask);
     } catch (err) {
         if (err.statusCode) {
@@ -64,7 +64,7 @@ export const updateTaskById = async (req, res, next) => {
 // DELETE /api/tasks/:id
 export const deleteTaskById = async (req, res, next) => {
     try {
-        await deleteTaskByIdService(req.user.id, req.params.id);
+        await deleteTaskByIdService(req.user.id, req.params.id, req.user.role);
         handleResponse(res, 200, "Task deleted successfully");
     } catch (err) {
         if (err.statusCode) {
