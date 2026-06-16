@@ -29,6 +29,12 @@ app.use("/api/tasks", taskRoutes);
 // error handling middlewares
 app.use(errorHandling);
 
+// routes
+app.use("/api/tasks", taskRoutes);
+
+// error handling middlewares
+app.use(errorHandling)
+
 // health route
 app.get("/health", async (req, res) => {
     const result = await pool.query("SELECT current_database()");
