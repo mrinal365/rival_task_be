@@ -6,11 +6,11 @@ import { SOCKET_EVENTS } from '../../socket/socket.events.js';
 
 // Create a new task for a user
 export const createTaskService = async (userId, taskData) => {
-    const { title, description, status, priority, due_date } = taskData;
+    const { title, description, status, priority, due_date, attachments } = taskData;
 
     const result = await pool.query(
-        `INSERT INTO tasks (user_id, title, description, status, priority, due_date) 
-         VALUES ($1, $2, $3, $4, $5, $6) 
+        `INSERT INTO tasks (user_id, title, description, status, priority, due_date, attachments) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7) 
          RETURNING *`,
         [
             userId,
@@ -18,7 +18,8 @@ export const createTaskService = async (userId, taskData) => {
             description || null,
             status || 'todo',
             priority || 'medium',
-            due_date || null
+            due_date || null,
+            attachments || []
         ]
     );
 
@@ -163,7 +164,7 @@ export const updateTaskByIdService = async (userId, taskId, updateData, role) =>
     const existingTask = existing.rows[0];
 
     // Build dynamic SET clause for partial update
-    const allowedFields = ['title', 'description', 'status', 'priority', 'due_date'];
+    const allowedFields = ['title', 'description', 'status', 'priority', 'due_date', 'attachments'];
     const setClauses = [];
     const values = [];
     let paramIndex = 1;
@@ -174,19 +175,27 @@ export const updateTaskByIdService = async (userId, taskId, updateData, role) =>
             const oldValue = existingTask[field];
             const newValue = updateData[field];
 
-            // Compare values (handling dates/nulls)
+            // Compare values (handling dates/nulls/arrays)
             let isChanged = oldValue !== newValue;
             if (field === 'due_date' && (oldValue || newValue)) {
                 const oldDateStr = oldValue ? new Date(oldValue).toISOString().split('T')[0] : null;
                 const newDateStr = newValue ? new Date(newValue).toISOString().split('T')[0] : null;
                 isChanged = oldDateStr !== newDateStr;
+            } else if (field === 'attachments') {
+                const oldArr = Array.isArray(oldValue) ? oldValue : [];
+                const newArr = Array.isArray(newValue) ? newValue : [];
+                isChanged = JSON.stringify([...oldArr].sort()) !== JSON.stringify([...newArr].sort());
             }
 
             if (isChanged) {
                 setClauses.push(`${field} = $${paramIndex}`);
                 values.push(newValue);
                 paramIndex++;
-                changes[field] = { old: oldValue, new: newValue };
+                
+                // Do not track attachments in changes for activity history
+                if (field !== 'attachments') {
+                    changes[field] = { old: oldValue, new: newValue };
+                }
             }
         }
     }

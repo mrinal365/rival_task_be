@@ -7,6 +7,7 @@ import errorHandling from './middlewares/error.middleware.js';
 import pool, { initDB } from './config/db.js';
 import taskRoutes from './modules/tasks/task.routes.js';
 import authRoutes from './modules/auth/auth.routes.js';
+import imagekitRoutes from './modules/imagekit/imagekit.routes.js';
 import { initSocket } from './socket/socket.manager.js';
 
 dotenv.config();
@@ -21,6 +22,7 @@ app.use(cors());
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/tasks', taskRoutes);
+app.use('/api/imagekit', imagekitRoutes);
 
 // Error handling
 app.use(errorHandling);
