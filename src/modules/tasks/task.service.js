@@ -1,5 +1,6 @@
 import pool from '../../config/db.js';
 import { ROLES } from '../../config/roles.js';
+import { createHistoryLog } from './task.history.service.js';
 
 // Create a new task for a user
 export const createTaskService = async (userId, taskData) => {
@@ -19,7 +20,16 @@ export const createTaskService = async (userId, taskData) => {
         ]
     );
 
-    return result.rows[0];
+    const task = result.rows[0];
+
+    // Log activity history
+    await createHistoryLog(task.id, userId, 'created', {
+        title: task.title,
+        status: task.status,
+        priority: task.priority
+    });
+
+    return task;
 };
 
 // Get all tasks for a user with filtering, pagination, search, and sort
@@ -133,18 +143,40 @@ export const updateTaskByIdService = async (userId, taskId, updateData) => {
         throw error;
     }
 
+    const existingTask = existing.rows[0];
+
     // Build dynamic SET clause for partial update
     const allowedFields = ['title', 'description', 'status', 'priority', 'due_date'];
     const setClauses = [];
     const values = [];
     let paramIndex = 1;
+    const changes = {};
 
     for (const field of allowedFields) {
         if (updateData[field] !== undefined) {
-            setClauses.push(`${field} = $${paramIndex}`);
-            values.push(updateData[field]);
-            paramIndex++;
+            const oldValue = existingTask[field];
+            const newValue = updateData[field];
+
+            // Compare values (handling dates/nulls)
+            let isChanged = oldValue !== newValue;
+            if (field === 'due_date' && (oldValue || newValue)) {
+                const oldDateStr = oldValue ? new Date(oldValue).toISOString().split('T')[0] : null;
+                const newDateStr = newValue ? new Date(newValue).toISOString().split('T')[0] : null;
+                isChanged = oldDateStr !== newDateStr;
+            }
+
+            if (isChanged) {
+                setClauses.push(`${field} = $${paramIndex}`);
+                values.push(newValue);
+                paramIndex++;
+                changes[field] = { old: oldValue, new: newValue };
+            }
         }
+    }
+
+    // If no changes, just return the existing task without updating database or logging history
+    if (setClauses.length === 0) {
+        return existingTask;
     }
 
     // Always update updated_at
@@ -157,7 +189,12 @@ export const updateTaskByIdService = async (userId, taskId, updateData) => {
         [...values, taskId, userId]
     );
 
-    return result.rows[0];
+    const updatedTask = result.rows[0];
+
+    // Log activity history
+    await createHistoryLog(taskId, userId, 'updated', changes);
+
+    return updatedTask;
 };
 
 // Delete a task (scoped to user)
@@ -173,5 +210,12 @@ export const deleteTaskByIdService = async (userId, taskId) => {
         throw error;
     }
 
-    return result.rows[0];
+    const deletedTask = result.rows[0];
+
+    // Log activity history
+    await createHistoryLog(taskId, userId, 'deleted', {
+        title: deletedTask.title
+    });
+
+    return deletedTask;
 };
