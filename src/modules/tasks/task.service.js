@@ -1,28 +1,177 @@
-// import pool from '../../config/db.js';
+import pool from '../../config/db.js';
+import { ROLES } from '../../config/roles.js';
 
+// Create a new task for a user
+export const createTaskService = async (userId, taskData) => {
+    const { title, description, status, priority, due_date } = taskData;
 
-export const createTaskService = async () => {
-    // const result = await pool.query()
-    const fakeResult = { "name": "createTaskService" }
-    return fakeResult
-}
-export const getAllTasksService = async () => {
-    // const result = pool.query("SELECT * FROM tasks ")
-    const fakeResult = [{ "name": "createTaskService" }, { "name": "createTaskService" }]
-    return fakeResult
-}
-export const getTaskByIdService = async (id) => {
-    // const result = pool.query("SELECT * FROM tasks where id =$1", [id])
-    const fakeResult = { "name": "getTaskByIdService" }
-    return fakeResult
-}
-export const updateTaskByIdService = async (id, task) => {
-    // const result = pool.query("UPDATE tasks SET title=$1, status=$2 WHERE id=$3 RETURNING *", [task.title, task.status, id])
-    const fakeResult = { "name": "updateTaskByIdService" }
-    return fakeResult
-}
-export const deleteTaskByIdService = async (id) => {
-    // const result = pool.query("DELETE FROM tasks WHERE id = $1 RETURNING *", [id]);
-    const fakeResult = { "name": "deleteTaskByIdService" }
-    return fakeResult
-}
+    const result = await pool.query(
+        `INSERT INTO tasks (user_id, title, description, status, priority, due_date) 
+         VALUES ($1, $2, $3, $4, $5, $6) 
+         RETURNING *`,
+        [
+            userId,
+            title,
+            description || null,
+            status || 'todo',
+            priority || 'medium',
+            due_date || null
+        ]
+    );
+
+    return result.rows[0];
+};
+
+// Get all tasks for a user with filtering, pagination, search, and sort
+// Admin sees all tasks; regular users see only their own
+export const getAllTasksService = async (userId, queryParams, role) => {
+    const {
+        status,
+        page = 1,
+        limit = 10,
+        search,
+        sortBy = 'created_at',
+        order = 'desc'
+    } = queryParams;
+
+    // Validate sort parameters
+    const allowedSortFields = ['created_at', 'due_date', 'priority', 'title', 'status'];
+    const sortField = allowedSortFields.includes(sortBy) ? sortBy : 'created_at';
+    const sortOrder = order.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+
+    // Handle priority sorting — map to numeric value for correct ordering
+    let orderClause;
+    if (sortField === 'priority') {
+        orderClause = `CASE priority WHEN 'high' THEN 3 WHEN 'medium' THEN 2 WHEN 'low' THEN 1 END ${sortOrder}`;
+    } else {
+        orderClause = `${sortField} ${sortOrder}`;
+    }
+
+    // Build dynamic WHERE clause — admin skips user_id filter
+    const isAdmin = role === ROLES.ADMIN;
+    const conditions = [];
+    const values = [];
+    let paramIndex = 1;
+
+    if (!isAdmin) {
+        conditions.push(`user_id = $${paramIndex}`);
+        values.push(userId);
+        paramIndex++;
+    }
+
+    if (status) {
+        conditions.push(`status = $${paramIndex}`);
+        values.push(status);
+        paramIndex++;
+    }
+
+    if (search) {
+        conditions.push(`title ILIKE $${paramIndex}`);
+        values.push(`%${search}%`);
+        paramIndex++;
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    // Calculate offset
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    // Get total count for pagination metadata
+    const countResult = await pool.query(
+        `SELECT COUNT(*) FROM tasks ${whereClause}`,
+        values
+    );
+    const totalCount = parseInt(countResult.rows[0].count);
+
+    // Get tasks
+    const result = await pool.query(
+        `SELECT * FROM tasks 
+         ${whereClause} 
+         ORDER BY ${orderClause}
+         LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+        [...values, parseInt(limit), offset]
+    );
+
+    return {
+        tasks: result.rows,
+        pagination: {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            totalCount,
+            totalPages: Math.ceil(totalCount / parseInt(limit))
+        }
+    };
+};
+
+// Get a single task by ID (scoped to user)
+export const getTaskByIdService = async (userId, taskId) => {
+    const result = await pool.query(
+        'SELECT * FROM tasks WHERE id = $1 AND user_id = $2',
+        [taskId, userId]
+    );
+
+    if (result.rows.length === 0) {
+        const error = new Error('Task not found');
+        error.statusCode = 404;
+        throw error;
+    }
+
+    return result.rows[0];
+};
+
+// Update a task (scoped to user) — partial update
+export const updateTaskByIdService = async (userId, taskId, updateData) => {
+    // First check if task exists and belongs to user
+    const existing = await pool.query(
+        'SELECT * FROM tasks WHERE id = $1 AND user_id = $2',
+        [taskId, userId]
+    );
+
+    if (existing.rows.length === 0) {
+        const error = new Error('Task not found');
+        error.statusCode = 404;
+        throw error;
+    }
+
+    // Build dynamic SET clause for partial update
+    const allowedFields = ['title', 'description', 'status', 'priority', 'due_date'];
+    const setClauses = [];
+    const values = [];
+    let paramIndex = 1;
+
+    for (const field of allowedFields) {
+        if (updateData[field] !== undefined) {
+            setClauses.push(`${field} = $${paramIndex}`);
+            values.push(updateData[field]);
+            paramIndex++;
+        }
+    }
+
+    // Always update updated_at
+    setClauses.push(`updated_at = NOW()`);
+
+    const result = await pool.query(
+        `UPDATE tasks SET ${setClauses.join(', ')} 
+         WHERE id = $${paramIndex} AND user_id = $${paramIndex + 1} 
+         RETURNING *`,
+        [...values, taskId, userId]
+    );
+
+    return result.rows[0];
+};
+
+// Delete a task (scoped to user)
+export const deleteTaskByIdService = async (userId, taskId) => {
+    const result = await pool.query(
+        'DELETE FROM tasks WHERE id = $1 AND user_id = $2 RETURNING *',
+        [taskId, userId]
+    );
+
+    if (result.rows.length === 0) {
+        const error = new Error('Task not found');
+        error.statusCode = 404;
+        throw error;
+    }
+
+    return result.rows[0];
+};

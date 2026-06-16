@@ -1,0 +1,31 @@
+import jwt from 'jsonwebtoken';
+
+// JWT authentication middleware
+// Extracts Bearer token, verifies it, and attaches user to req
+export const authenticate = (req, res, next) => {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({
+            status: 401,
+            message: 'Access denied. No token provided.'
+        });
+    }
+
+    const token = authHeader.split(' ')[1];
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        req.user = {
+            id: decoded.id,
+            email: decoded.email,
+            role: decoded.role
+        };
+        next();
+    } catch (err) {
+        return res.status(401).json({
+            status: 401,
+            message: 'Invalid or expired token'
+        });
+    }
+};
