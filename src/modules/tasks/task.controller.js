@@ -6,6 +6,7 @@ import {
     getTaskByIdService,
     updateTaskByIdService
 } from "./task.service.js";
+import { getTaskHistoryService } from "./task.history.service.js";
 
 // POST /api/tasks
 export const createTask = async (req, res, next) => {
@@ -65,6 +66,19 @@ export const deleteTaskById = async (req, res, next) => {
     try {
         await deleteTaskByIdService(req.user.id, req.params.id);
         handleResponse(res, 200, "Task deleted successfully");
+    } catch (err) {
+        if (err.statusCode) {
+            return handleResponse(res, err.statusCode, err.message);
+        }
+        next(err);
+    }
+};
+
+// GET /api/tasks/:id/history
+export const getTaskHistory = async (req, res, next) => {
+    try {
+        const history = await getTaskHistoryService(req.user.id, req.user.role, req.params.id);
+        handleResponse(res, 200, "Task history fetched successfully", history);
     } catch (err) {
         if (err.statusCode) {
             return handleResponse(res, err.statusCode, err.message);
