@@ -1,48 +1,74 @@
 import { handleResponse } from "../../utils/index.js";
-import { createTaskService, deleteTaskByIdService, getAllTasksService, getTaskByIdService, updateTaskByIdService } from "./task.service.js";
+import {
+    createTaskService,
+    deleteTaskByIdService,
+    getAllTasksService,
+    getTaskByIdService,
+    updateTaskByIdService
+} from "./task.service.js";
 
+// POST /api/tasks
 export const createTask = async (req, res, next) => {
-    const { } = req.body
     try {
-        const newTask = await createTaskService();
-        handleResponse(res, 201, "Task Created Successfully", newTask)
+        const newTask = await createTaskService(req.user.id, req.body);
+        handleResponse(res, 201, "Task created successfully", newTask);
     } catch (err) {
-        next(err); // this will send to the centralised error handler 
+        if (err.statusCode) {
+            return handleResponse(res, err.statusCode, err.message);
+        }
+        next(err);
     }
-}
+};
 
+// GET /api/tasks
 export const getAllTasks = async (req, res, next) => {
     try {
-        const tasks = await getAllTasksService();
-        handleResponse(res, 200, "Tasks fetched successfully", tasks)
+        // console.log(req.user)        
+        const result = await getAllTasksService(req.user.id, req.query, req.user.role);
+        handleResponse(res, 200, "Tasks fetched successfully", result);
     } catch (err) {
+        if (err.statusCode) {
+            return handleResponse(res, err.statusCode, err.message);
+        }
         next(err);
     }
-}
+};
 
+// GET /api/tasks/:id
 export const getTaskById = async (req, res, next) => {
     try {
-        const task = await getTaskByIdService(req.params.id);
-        handleResponse(res, 200, "Task fetched successfully", task)
+        const task = await getTaskByIdService(req.user.id, req.params.id);
+        handleResponse(res, 200, "Task fetched successfully", task);
     } catch (err) {
+        if (err.statusCode) {
+            return handleResponse(res, err.statusCode, err.message);
+        }
         next(err);
     }
-}
+};
 
+// PATCH /api/tasks/:id
 export const updateTaskById = async (req, res, next) => {
     try {
-        const newTask = await updateTaskByIdService(req.params.id, req.body);
-        handleResponse(res, 200, "Task Updated Successfully", {})
+        const updatedTask = await updateTaskByIdService(req.user.id, req.params.id, req.body);
+        handleResponse(res, 200, "Task updated successfully", updatedTask);
     } catch (err) {
+        if (err.statusCode) {
+            return handleResponse(res, err.statusCode, err.message);
+        }
         next(err);
     }
-}
+};
 
+// DELETE /api/tasks/:id
 export const deleteTaskById = async (req, res, next) => {
     try {
-        const newTask = await deleteTaskByIdService(req.params.id);
-        handleResponse(res, 201, "Task Deleted Successfully")
+        await deleteTaskByIdService(req.user.id, req.params.id);
+        handleResponse(res, 200, "Task deleted successfully");
     } catch (err) {
+        if (err.statusCode) {
+            return handleResponse(res, err.statusCode, err.message);
+        }
         next(err);
     }
-}
+};
