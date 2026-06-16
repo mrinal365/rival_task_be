@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createTask, deleteTaskById, getAllTasks, getTaskById, updateTaskById } from './task.controller.js';
+import { createTask, deleteTaskById, getAllTasks, getTaskById, updateTaskById, getTaskHistory } from './task.controller.js';
 import { validateCreateTask, validateUpdateTask } from './task.validation.js';
 import { authenticate } from '../auth/auth.middleware.js';
 import { authorize } from '../../middlewares/authorize.middleware.js';
@@ -37,6 +37,11 @@ router.delete("/:id",
     authenticate,
     authorize(ROLES.USER, ROLES.ADMIN),
     deleteTaskById
+);
+router.get("/:id/history",
+    authenticate,
+    authorize(ROLES.USER, ROLES.ADMIN),
+    getTaskHistory
 );
 
 export default router;
