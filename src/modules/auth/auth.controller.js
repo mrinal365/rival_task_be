@@ -1,5 +1,5 @@
 import { handleResponse } from '../../utils/index.js';
-import { signupService, loginService, getMeService } from './auth.service.js';
+import { signupService, loginService, getMeService, makeAdminService } from './auth.service.js';
 
 // POST /api/auth/signup
 export const signup = async (req, res, next) => {
@@ -34,6 +34,19 @@ export const getMe = async (req, res, next) => {
     try {
         const user = await getMeService(req.user.id);
         handleResponse(res, 200, 'User profile fetched successfully', user);
+    } catch (err) {
+        if (err.statusCode) {
+            return handleResponse(res, err.statusCode, err.message);
+        }
+        next(err);
+    }
+};
+
+// POST /api/auth/make-admin/:userId
+export const makeAdmin = async (req, res, next) => {
+    try {
+        const updatedUser = await makeAdminService(req.params.userId);
+        handleResponse(res, 200, 'User role updated to admin successfully', updatedUser);
     } catch (err) {
         if (err.statusCode) {
             return handleResponse(res, err.statusCode, err.message);

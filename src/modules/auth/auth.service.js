@@ -91,3 +91,22 @@ export const getMeService = async (userId) => {
 
     return result.rows[0];
 };
+
+// Make a user an admin
+export const makeAdminService = async (userId) => {
+    const result = await pool.query(
+        `UPDATE users 
+         SET role = 'admin', updated_at = NOW() 
+         WHERE id = $1 
+         RETURNING id, name, email, role, created_at, updated_at`,
+        [userId]
+    );
+
+    if (result.rows.length === 0) {
+        const error = new Error('User not found');
+        error.statusCode = 404;
+        throw error;
+    }
+
+    return result.rows[0];
+};
